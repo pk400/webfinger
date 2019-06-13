@@ -1,19 +1,38 @@
-import requests
-from urllib.parse import urlparse, urlunparse
+from starlette.endpoints import HTTPEndpoint
+from starlette.responses import Response
 
-class Webfinger:
-  def find_account(self, acct_uri):
-    components = urlparse(acct_uri)
-    if components.scheme != 'acct':
-      print('Not an acct URI.')
-    userpart, host = components.path.split('@')
-    response = self._get_account_from_host(host, userpart)
-    if response.status_code == 200:
-      return response.json()
-    return None
+from .jrd import JRD
 
-  def _get_account_from_host(self, host, userpart):
-    acct_uri = 'resource=acct:{}@{}'.format(userpart, host)
-    return requests.get(urlunparse((
-      'https', host, '/.well-known/webfinger', None, acct_uri, None)))
+class WebFingerEndpoint(HTTPEndpoint):
+  '''RFC7033 compliant WebFinger implementation.'''
+
+  async def get(self, request):
+    if request['scheme'] != 'https':
+      return Response(status_code=495)
+    params = request.query_params
+    if 'resource' not in params:
+      return Response(status_code=400)
+    if 'rel' in params:
+      rels = []
+      for x in params.getlist('rel'):
+        rels.append(('rel', x))
+    return self._process_request(params['resource'], rels)
+    
+  def process_request(self, resource, rels):
+    '''Override process_request to retrieve the requested resource.
+    
+    Args:
+      resource (str): Resource parameter.
+      rels (list): List of link relation objects.
+    
+    Returns:
+      JRD object.
+    '''
+    raise NotImplementedError()
+  
+  def _process_request(self, resource, rels):
+    response = self.process_request(resource, rels)
+    if not isinstance(JRD):
+      return Response('Response is not a JRD.', status_code=500)
+    return response.response()
 
